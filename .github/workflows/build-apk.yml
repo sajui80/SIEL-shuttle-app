@@ -1,0 +1,72 @@
+name: Build and release APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node.js 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: JDK 설정
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 의존성 설치
+        run: npm install
+
+      - name: 웹 자산 -> 안드로이드 프로젝트 동기화
+        run: npx cap sync android
+
+      - name: 버전 번호 반영 (빌드마다 자동 증가)
+        run: |
+          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          sed -i "s/versionName \"1.0\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
+
+      - name: 서명 키(keystore) 복원
+        env:
+          SHUTTLE_KEYSTORE_BASE64: ${{ secrets.SHUTTLE_KEYSTORE_BASE64 }}
+        run: |
+          echo "$SHUTTLE_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+
+      - name: gradlew 실행 권한 부여
+        run: chmod +x android/gradlew
+
+      - name: 릴리즈 APK 빌드
+        env:
+          SHUTTLE_KEYSTORE_PATH: release.keystore
+          SHUTTLE_KEYSTORE_PASSWORD: ${{ secrets.SHUTTLE_KEYSTORE_PASSWORD }}
+          SHUTTLE_KEY_ALIAS: ${{ secrets.SHUTTLE_KEY_ALIAS }}
+          SHUTTLE_KEY_PASSWORD: ${{ secrets.SHUTTLE_KEY_PASSWORD }}
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon
+
+      - name: 결과물 정리
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk out/shuttle-board.apk
+
+      - name: GitHub Release로 배포 (항상 최신 버전 링크 유지)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "퇴근셔틀 v1.0.${{ github.run_number }}"
+          make_latest: true
+          files: out/shuttle-board.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

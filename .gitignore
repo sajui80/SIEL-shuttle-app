@@ -1,0 +1,9 @@
+node_modules/
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
+android/app/release.keystore
+*.keystore
+keystore-passwords.txt
+.DS_Store

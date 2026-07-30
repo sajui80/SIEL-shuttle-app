@@ -1,0 +1,1527 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>퇴근 셔틀 배차현황</title>
+<meta name="theme-color" content="#c2740a">
+
+<!-- 초기 연결(DNS/TLS)을 미리 맺어 Firebase 로딩 속도를 조금 앞당깁니다 -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+
+<!-- Firebase (무료 플랜으로 충분합니다) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyA3m70FBaTGl9XLbOUfwPVLgtLwqpY3piM",
+    authDomain: "shuttle-board.firebaseapp.com",
+    projectId: "shuttle-board",
+    storageBucket: "shuttle-board.firebasestorage.app",
+    messagingSenderId: "920392719136",
+    appId: "1:920392719136:web:c54b536b1b7f525b78d545"
+  };
+  firebase.initializeApp(firebaseConfig);
+</script>
+</head>
+<body style="margin:0; background:#f5f7fa;">
+<style>
+  :root{
+    --bg:#f5f7fa;
+    --panel:#ffffff;
+    --panel-2:#eef1f6;
+    --line:#dde2ea;
+    --text:#1b2130;
+    --muted:#6b7382;
+    --amber:#c2740a;
+    --green:#15803d;
+    --rose:#e11d48;
+  }
+  *{box-sizing:border-box;}
+  .board{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    padding:28px 20px 40px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    min-height:520px;
+  }
+  .system-title-bar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:12px;
+    margin-bottom:18px;
+    padding-bottom:14px;
+    border-bottom:2px solid var(--amber);
+  }
+  .system-title{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:19px;
+    font-weight:900;
+    color:var(--text);
+    letter-spacing:-0.01em;
+    white-space:nowrap;
+  }
+  .system-title:before{
+    content:'🚐';
+    font-size:20px;
+  }
+  .notice{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    background:linear-gradient(135deg, rgba(194,116,10,0.08), rgba(194,116,10,0.16));
+    border:1px solid rgba(194,116,10,0.35);
+    border-left:4px solid var(--amber);
+    color:var(--text);
+    font-size:13px;
+    font-weight:700;
+    padding:12px 16px;
+    border-radius:12px;
+  }
+  .notice-label{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .notice-time{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:17px;
+    font-weight:800;
+    color:var(--amber);
+    background:rgba(194,116,10,0.14);
+    padding:4px 14px;
+    border-radius:8px;
+    letter-spacing:0.02em;
+    white-space:nowrap;
+  }
+  .head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:12px;
+    margin-bottom:22px;
+    border-bottom:1px solid var(--line);
+    padding-bottom:18px;
+  }
+  .head h1{
+    margin:0;
+    font-size:20px;
+    letter-spacing:0.02em;
+    font-weight:700;
+  }
+  .head .sub{
+    color:var(--text);
+    font-size:22px;
+    font-weight:800;
+    margin-top:8px;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:0.01em;
+  }
+  .stat{
+    text-align:right;
+    min-width:150px;
+  }
+  .stat .num{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:26px;
+    color:var(--amber);
+    font-weight:700;
+    letter-spacing:0.02em;
+  }
+  .stat .label{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:2px;
+  }
+  .progress-wrap{
+    width:150px;
+    height:6px;
+    background:var(--panel-2);
+    border-radius:4px;
+    margin-top:8px;
+    overflow:hidden;
+  }
+  .progress-bar{
+    height:100%;
+    background:var(--amber);
+    border-radius:4px;
+    transition:width .3s ease;
+  }
+  .progress-bar.done{ background:var(--green); }
+  .complete-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:linear-gradient(135deg,#15803d,#22c55e);
+    color:#fff;
+    font-size:13px;
+    font-weight:800;
+    padding:8px 16px;
+    border-radius:20px;
+    box-shadow:0 3px 10px rgba(21,128,61,0.35);
+    letter-spacing:0.01em;
+  }
+  .complete-sub{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:6px;
+    text-align:right;
+  }
+  .reset-btn{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--muted);
+    font-size:12px;
+    padding:7px 12px;
+    border-radius:8px;
+    cursor:pointer;
+    margin-left:12px;
+    white-space:nowrap;
+  }
+  .reset-btn:hover{ border-color:var(--rose); color:var(--rose); }
+
+  .section-label{
+    font-size:12px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    margin:0 0 10px 2px;
+    font-weight:700;
+  }
+
+  .result-board{
+    background:var(--panel);
+    border:1px solid var(--amber);
+    border-radius:14px;
+    padding:18px;
+    margin-bottom:22px;
+    box-shadow:0 2px 10px rgba(194,116,10,0.10);
+  }
+  .result-board-title{
+    font-size:15px;
+    font-weight:800;
+    color:var(--text);
+    margin-bottom:14px;
+    display:flex;
+    align-items:baseline;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .result-board-date{
+    font-size:12px;
+    font-weight:600;
+    color:var(--muted);
+  }
+  .result-row{
+    padding:10px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .result-row:last-child{ border-bottom:none; }
+  .result-row-top{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:4px;
+  }
+  .result-car{ font-weight:800; font-size:14px; }
+  .result-driver{ font-size:12.5px; color:var(--muted); }
+  .result-driver:before{ content:'· '; }
+  .result-time{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-weight:700;
+    color:var(--amber);
+    font-size:13px;
+    margin-left:auto;
+    white-space:nowrap;
+  }
+  .result-names{
+    font-size:13px;
+    color:var(--text);
+    line-height:1.7;
+  }
+
+  .nonuser-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:16px;
+    margin-bottom:22px;
+  }
+  .nonuser-list{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:12px;
+  }
+  .nonuser-chip{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    padding:6px 8px 6px 12px;
+    border-radius:20px;
+    font-size:13px;
+  }
+  .nonuser-chip .reason{
+    font-size:11px;
+    font-weight:700;
+    padding:2px 7px;
+    border-radius:10px;
+    white-space:nowrap;
+  }
+  .nonuser-chip .range{
+    color:var(--muted);
+    font-size:11px;
+  }
+  .nonuser-chip button{
+    background:none;
+    border:none;
+    color:var(--muted);
+    cursor:pointer;
+    font-size:14px;
+    padding:0 2px;
+  }
+  .nonuser-chip button:hover{ color:var(--rose); }
+  .nonuser-chip.confirming{
+    background:rgba(225,29,72,0.07);
+    border-color:rgba(225,29,72,0.35);
+    color:#9f1239;
+    font-weight:600;
+    padding-right:6px;
+  }
+  .nonuser-chip .chip-yes,
+  .nonuser-chip .chip-no{
+    border-radius:12px;
+    padding:3px 10px;
+    font-size:11.5px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .nonuser-chip .chip-yes{
+    background:var(--rose);
+    border:1px solid var(--rose);
+    color:#fff;
+  }
+  .nonuser-chip .chip-yes:hover{ color:#fff; }
+  .nonuser-chip .chip-no{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--muted);
+  }
+  .nonuser-empty{
+    color:var(--muted);
+    font-size:12px;
+    margin-bottom:12px;
+  }
+  .nonuser-add{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  .nu-row-name, .nu-row-meta{ display:contents; }
+  .nonuser-add select, .nonuser-add input{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:8px;
+    padding:8px 9px;
+    font-size:13px;
+  }
+  .nonuser-add input#nonuserName{ flex:1; min-width:130px; }
+  .nu-row-meta select{ flex:1.2; min-width:100px; }
+  .date-wrap{
+    position:relative;
+    flex:1;
+    min-width:90px;
+    display:flex;
+  }
+  .date-label{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:8px 6px;
+    font-size:13px;
+    font-weight:600;
+    color:var(--text);
+    white-space:nowrap;
+    pointer-events:none;
+  }
+  .date-wrap input[type="date"]{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    opacity:0;
+    border:none;
+    padding:0;
+    margin:0;
+    cursor:pointer;
+  }
+  .date-sep{
+    color:var(--muted);
+    font-size:12px;
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+  }
+  .nonuser-add button{
+    background:var(--panel-2);
+    border:1px solid var(--amber);
+    color:var(--amber);
+    border-radius:8px;
+    padding:0 14px;
+    font-weight:700;
+    font-size:13px;
+    cursor:pointer;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:16px;
+  }
+  @media (max-width:640px){
+    .grid{ grid-template-columns:1fr; }
+    .board{ padding:18px 12px 30px; }
+    .head{ align-items:flex-start; }
+    .head h1{ font-size:17px; }
+    .head .sub{ font-size:19px; }
+    .head > div:last-child{ width:100%; flex-wrap:wrap; gap:8px; }
+    .stat{ text-align:left; flex-basis:100%; }
+    .progress-wrap{ width:100%; }
+    .complete-sub{ text-align:left; }
+    .reset-btn{ margin-left:0; flex:1; }
+    .system-title-bar{ flex-direction:column; align-items:flex-start; gap:8px; }
+    .system-title{ font-size:16px; }
+    .notice{ flex-wrap:wrap; width:100%; }
+    .nonuser-add{ flex-direction:column; align-items:stretch; gap:8px; }
+    .nu-row-name, .nu-row-meta{ display:flex; gap:5px; width:100%; flex-wrap:nowrap; align-items:center; }
+    .nu-row-name input{ flex:1; min-width:0; font-size:16px; padding:10px; }
+    .nu-row-name button{ flex-shrink:0; font-size:14px; padding:0 16px; }
+    .nu-row-meta select{ flex:0 0 76px; min-width:0; font-size:11.5px; padding:7px 2px; }
+    .date-wrap{ flex:1; min-width:64px; }
+    .date-label{ font-size:12px; padding:7px 2px; }
+    .date-sep{ flex-shrink:0; font-size:11px; padding:0 1px; }
+    .add-row input{ font-size:16px; padding:10px; }
+    .add-row button{ padding:0 18px; }
+    .car-memo{ font-size:16px; }
+    .status-panel-row{ flex-direction:column; gap:4px; }
+    .status-panel-slot{ width:auto; }
+    .plist li{ padding:10px; font-size:14px; }
+    .seat{ width:20px; height:20px; }
+  }
+
+  .car{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:16px;
+    display:flex;
+    flex-direction:column;
+  }
+  .car-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    margin-bottom:4px;
+  }
+  .car-name{
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:0.01em;
+  }
+  .car-time{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--amber);
+    font-size:23px;
+    font-weight:900;
+    letter-spacing:0.01em;
+  }
+  .car-driver{
+    color:var(--muted);
+    font-size:13px;
+    margin-bottom:10px;
+  }
+  .car-driver b{ color:var(--text); font-weight:800; font-size:17px; }
+  .car-memo-badges{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    margin-bottom:10px;
+  }
+  .car-memo-badge{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:8px;
+    background:rgba(37,99,235,0.08);
+    border:1px solid rgba(37,99,235,0.28);
+    color:#1d4ed8;
+    border-radius:8px;
+    padding:6px 9px;
+    font-size:12px;
+    line-height:1.4;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .memo-del-btn{
+    background:none;
+    border:none;
+    color:#6b8fd4;
+    cursor:pointer;
+    font-size:13px;
+    line-height:1;
+    padding:0 2px;
+    flex-shrink:0;
+  }
+  .memo-del-btn:hover{ color:var(--rose); }
+  .memo-row{
+    display:flex;
+    align-items:stretch;
+    gap:6px;
+  }
+  .memo-row .car-memo{
+    flex:1;
+    min-width:0;
+    margin-top:0;
+  }
+  .memo-done-btn{
+    background:none;
+    border:1px solid rgba(37,99,235,0.4);
+    color:#1d4ed8;
+    border-radius:8px;
+    padding:0 10px;
+    font-size:11.5px;
+    font-weight:700;
+    cursor:pointer;
+    flex-shrink:0;
+    white-space:nowrap;
+  }
+  .memo-done-btn:hover{ background:rgba(37,99,235,0.08); }
+
+  .seats-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-bottom:12px;
+  }
+  .seats{
+    display:flex;
+    gap:4px;
+    flex-wrap:wrap;
+  }
+  .seat{
+    width:16px;
+    height:16px;
+    border-radius:4px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+  }
+  .seat.filled{ background:var(--amber); border-color:var(--amber); }
+  .seat.full{ background:var(--rose); border-color:var(--rose); }
+
+  .status-line{
+    font-size:12px;
+    color:var(--muted);
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+    flex-shrink:0;
+  }
+  .status-line.ok{ color:var(--green); }
+  .status-line.full{ color:var(--rose); }
+
+  .plist{
+    list-style:none;
+    margin:0 0 12px 0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    min-height:8px;
+  }
+  .plist li{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background:var(--panel-2);
+    padding:7px 10px;
+    border-radius:8px;
+    font-size:13px;
+    gap:8px;
+  }
+  .plist .pname{ flex:1; min-width:0; }
+  .plist .pnum{
+    color:var(--amber);
+    font-weight:700;
+    margin-right:6px;
+  }
+  .plist button{
+    background:none;
+    border:none;
+    color:var(--muted);
+    cursor:pointer;
+    font-size:14px;
+    line-height:1;
+    padding:2px 4px;
+    flex-shrink:0;
+  }
+  .plist button:hover{ color:var(--rose); }
+  .empty-row{
+    color:var(--muted);
+    font-size:12px;
+    padding:6px 2px;
+  }
+
+  .add-row{
+    display:flex;
+    gap:6px;
+    margin-top:auto;
+  }
+  .add-row select, .add-row input{
+    flex:1;
+    min-width:0;
+  }
+  .add-row select, .add-row input{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:8px;
+    padding:8px 9px;
+    font-size:13px;
+  }
+  .add-row button{
+    background:var(--amber);
+    color:#ffffff;
+    border:none;
+    border-radius:8px;
+    padding:0 14px;
+    font-weight:700;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .add-row button:disabled{
+    background:var(--line);
+    color:var(--muted);
+    cursor:not-allowed;
+  }
+
+  .car-memo{
+    background:rgba(37,99,235,0.05);
+    border:1px solid rgba(37,99,235,0.25);
+    color:#1b2130;
+    border-radius:8px;
+    padding:8px 10px;
+    font-size:12px;
+    margin-top:10px;
+    resize:vertical;
+    min-height:40px;
+    font-family:inherit;
+  }
+  .car-memo::placeholder{ color:#6b8fd4; }
+  .car-memo-label{
+    font-size:10.5px;
+    color:#6b8fd4;
+    font-weight:700;
+    margin-top:12px;
+    margin-bottom:4px;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+  }
+  .foot-note{
+    text-align:center;
+    color:var(--muted);
+    font-size:11px;
+    margin-top:18px;
+  }
+  .summary-title{
+    font-size:14px;
+    font-weight:700;
+    color:var(--amber);
+    margin-bottom:14px;
+  }
+  .summary-divider{
+    border:none;
+    border-top:1px solid var(--line);
+    margin:14px 0;
+  }
+  .summary-note{
+    font-size:12px;
+    color:var(--muted);
+  }
+  .status-panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:18px;
+    margin-bottom:22px;
+  }
+  .status-panel-row{
+    display:flex;
+    align-items:baseline;
+    gap:12px;
+    padding:8px 0;
+    border-bottom:1px solid var(--line);
+    font-size:13px;
+  }
+  .status-panel-row:last-child{ border-bottom:none; }
+  .status-panel-slot{
+    width:110px;
+    flex-shrink:0;
+    font-weight:700;
+  }
+  .status-panel-time{
+    color:var(--amber);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:11px;
+    font-weight:400;
+  }
+  .status-panel-driver{
+    display:block;
+    font-size:10.5px;
+    font-weight:400;
+    color:var(--muted);
+    margin-top:2px;
+  }
+  .status-panel-names{
+    color:var(--text);
+    line-height:1.6;
+  }
+  .missing-chip{
+    display:inline-block;
+    background:rgba(225,29,72,0.08);
+    border:1px solid rgba(225,29,72,0.3);
+    color:#9f1239;
+    font-size:12.5px;
+    font-weight:600;
+    padding:3px 9px;
+    border-radius:12px;
+    margin:2px 4px 2px 0;
+  }
+</style>
+
+<div id="root" class="board">
+  <div class="system-title-bar">
+    <div class="system-title">주재원 퇴근 차량 게시판</div>
+    <div class="notice">
+      <span class="notice-label">⏰ 오늘 퇴근 차량 입력 마감</span>
+      <span class="notice-time">17:00</span>
+    </div>
+  </div>
+  <div class="nonuser-card">
+    <div class="nonuser-empty">불러오는 중...</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const root = document.getElementById('root');
+  let data = null;
+  let leaves = [];
+  let statusOpen = false;
+  let rosterOpen = false;
+  let pendingConfirm = null; // {type:'leave'|'roster', id/name}
+
+  // 입력 대상자 명단은 Firestore(shuttle/roster)에서 관리됩니다.
+  // 아래 배열은 문서가 아직 없을 때 사용하는 최초 기본값입니다.
+  const DEFAULT_ROSTER = ['김두환','김병균','김수완','김승용','김지구','김진보','김휴목','민유석','박형배','성경욱','신정훈','윤상근','조규동','정상준','최정갑'];
+  let roster = DEFAULT_ROSTER.slice();
+
+  const SLOTS = [
+    { idx:0, label:'1호차', time:'17:40' },
+    { idx:1, label:'2호차', time:'18:30' },
+    { idx:2, label:'3호차', time:'19:00' },
+    { idx:3, label:'4호차', time:'20:00' }
+  ];
+  const CAPACITY = 5;
+  const CUTOFF_TIME = '17:00';
+  const DRIVERS_BASE = ['Kaillash','Devender','Tarun','Amit'];
+  const ANCHOR_MONDAY = new Date('2026-07-20T00:00:00');
+  const NONUSE_REASONS = ['출장','휴가','자차','기타'];
+  const REASON_COLORS = {
+    '출장': { bg:'rgba(37,99,235,0.12)', fg:'#1d4ed8' },
+    '휴가': { bg:'rgba(22,163,74,0.13)', fg:'#15803d' },
+    '자차': { bg:'rgba(147,51,234,0.12)', fg:'#7e22ce' },
+    '기타': { bg:'rgba(107,115,130,0.14)', fg:'#4b5563' }
+  };
+  const REASON_ICONS = {
+    '출장': '✈️',
+    '휴가': '🏖️',
+    '자차': '🚗',
+    '기타': '📌'
+  };
+  function reasonStyle(reason){
+    const c = REASON_COLORS[reason] || REASON_COLORS['기타'];
+    return `background:${c.bg}; color:${c.fg};`;
+  }
+  function reasonIcon(reason){
+    return REASON_ICONS[reason] || REASON_ICONS['기타'];
+  }
+
+  // =====================================================================
+  // 날짜/시각 판단: 접속 기기의 로컬 시계·시간대에 의존하지 않도록,
+  // Firestore 서버 시각을 기준으로 보정하고 항상 고정 시간대(노이다 법인,
+  // Asia/Kolkata)로 "오늘 날짜"를 계산합니다.
+  // (기존 웹 버전 오류 원인: 기기 로컬 시계 기준 날짜 판단 → 특정 기기의
+  //  시각/시간대가 어긋나면 전체 탑승 명단이 초기화·덮어쓰기 되는 문제)
+  // =====================================================================
+  const BOARD_TIMEZONE = 'Asia/Kolkata';
+  let serverTimeOffsetMs = 0;
+
+  async function syncServerTime(){
+    try{
+      const ref = db.collection('shuttle').doc('_timesync');
+      const sentAt = Date.now();
+      await ref.set({ ts: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      const snap = await ref.get({ source: 'server' });
+      const tsField = snap.get('ts');
+      if(tsField && typeof tsField.toMillis === 'function'){
+        const serverMs = tsField.toMillis();
+        const roundTrip = Date.now() - sentAt;
+        serverTimeOffsetMs = serverMs - (sentAt + roundTrip / 2);
+      }
+    } catch(e){
+      console.warn('서버 시각 동기화 실패 — 기기 시각으로 대체합니다', e);
+      serverTimeOffsetMs = 0;
+    }
+  }
+
+  function nowMs(){ return Date.now() + serverTimeOffsetMs; }
+
+  function todayStr(){
+    const d = new Date(nowMs());
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: BOARD_TIMEZONE, year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(d);
+    const get = (t) => (parts.find(p => p.type === t) || {}).value || '00';
+    return `${get('year')}-${get('month')}-${get('day')}`;
+  }
+
+  function isPastCutoff(){
+    const d = new Date(nowMs());
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: BOARD_TIMEZONE, hour:'2-digit', minute:'2-digit', hour12:false }).formatToParts(d);
+    const get = (t) => (parts.find(p => p.type === t) || {}).value || '0';
+    const h = parseInt(get('hour'), 10);
+    const m = parseInt(get('minute'), 10);
+    const [ch,cm] = CUTOFF_TIME.split(':').map(Number);
+    return (h*60+m) >= (ch*60+cm);
+  }
+  // =====================================================================
+
+  function mondayOf(d){
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = (day === 0 ? -6 : 1 - day);
+    date.setDate(date.getDate() + diff);
+    date.setHours(0,0,0,0);
+    return date;
+  }
+
+  function weeksSinceAnchor(){
+    const thisMonday = mondayOf(new Date(nowMs()));
+    const diffDays = Math.round((thisMonday - ANCHOR_MONDAY) / (24*3600*1000));
+    const weeks = Math.floor(diffDays / 7);
+    return ((weeks % 4) + 4) % 4;
+  }
+
+  function driverForSlot(slotIdx){
+    const w = weeksSinceAnchor();
+    const baseIdx = ((slotIdx - w) % 4 + 4) % 4;
+    return DRIVERS_BASE[baseIdx];
+  }
+
+  function defaultCars(){
+    return SLOTS.map(s => ({ id:s.idx, passengers:[], memos:[] }));
+  }
+  function defaultData(){
+    return { date: todayStr(), cars: defaultCars() };
+  }
+
+  const db = firebase.firestore();
+
+  // 사내망/VPN 등에서 웹소켓이 막혀 있으면 최초 연결이 느려질 수 있어,
+  // 연결 방식을 자동으로 빠르게 감지하도록 설정합니다.
+  try{ db.settings({ experimentalAutoDetectLongPolling: true }); } catch(e){ console.warn('firestore settings 적용 실패', e); }
+
+  try{
+    db.enablePersistence().catch((err) => {
+      console.warn('오프라인 캐시 사용 불가:', err && err.code);
+    });
+  } catch(e){ console.warn('enablePersistence 호출 실패', e); }
+
+  const boardDocRef = db.collection('shuttle').doc('board');
+  const leavesDocRef = db.collection('shuttle').doc('leaves');
+  const rosterDocRef = db.collection('shuttle').doc('roster');
+
+  // ---- 트랜잭션 기반 저장 : 두 사람이 동시에 입력해도 서로의 입력이
+  //      유실되지 않도록, 저장 시점에 서버의 최신 데이터를 다시 읽어
+  //      그 위에 반영합니다. ----
+  async function mutateBoard(mutator){
+    try{
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(boardDocRef);
+        let cur = snap.exists ? snap.data() : null;
+        if(!cur || cur.date !== todayStr()) cur = defaultData();
+        if(!Array.isArray(cur.cars)) cur.cars = defaultCars();
+        cur.cars.forEach(c => {
+          if(!Array.isArray(c.memos)){
+            c.memos = (typeof c.memo === 'string' && c.memo.trim()) ? [{ id:'legacy-'+c.id, text:c.memo.trim() }] : [];
+          }
+          delete c.memo;
+        });
+        mutator(cur);
+        tx.set(boardDocRef, cur);
+      });
+    } catch(e){ console.error('저장 실패', e); }
+  }
+
+  async function mutateLeaves(mutator){
+    try{
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(leavesDocRef);
+        let cur = (snap.exists && Array.isArray(snap.data().leaves)) ? snap.data().leaves.slice() : [];
+        const next = mutator(cur);
+        tx.set(leavesDocRef, { leaves: Array.isArray(next) ? next : cur });
+      });
+    } catch(e){ console.error('저장 실패', e); }
+  }
+
+  async function mutateRoster(mutator){
+    try{
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(rosterDocRef);
+        let cur = (snap.exists && Array.isArray(snap.data().names) && snap.data().names.length)
+          ? snap.data().names.slice() : DEFAULT_ROSTER.slice();
+        const next = mutator(cur);
+        tx.set(rosterDocRef, { names: Array.isArray(next) ? next : cur });
+      });
+    } catch(e){ console.error('저장 실패', e); }
+  }
+
+  // 날짜가 바뀐 것을 읽기 시점에 감지했을 때, 트랜잭션으로 안전하게
+  // (여러 기기가 동시에 접속해도 중복 없이) 새 날짜 데이터로 초기화합니다.
+  async function resetBoardIfStale(){
+    try{
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(boardDocRef);
+        const cur = snap.exists ? snap.data() : null;
+        if(!cur || cur.date !== todayStr()){
+          tx.set(boardDocRef, defaultData());
+        }
+      });
+    } catch(e){ console.error('초기화 실패', e); }
+  }
+
+  function todaysNonUsers(){
+    const t = todayStr();
+    return leaves.filter(l => l.start <= t && t <= l.end);
+  }
+
+  function shouldPauseRefresh(){
+    if(pendingConfirm) return true;
+    if(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('car-memo')) return true;
+    if(document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.id && (document.activeElement.id.startsWith('name-') || document.activeElement.id === 'nonuserName' || document.activeElement.id === 'rosterName')) return true;
+    return false;
+  }
+
+  let boardReady = false, leavesReady = false, rosterReady = false, pendingRerender = false;
+  function tryRender(){
+    if(!boardReady || !leavesReady || !rosterReady) return;
+    if(shouldPauseRefresh()){ pendingRerender = true; return; }
+    pendingRerender = false;
+    render();
+  }
+  document.addEventListener('focusout', () => {
+    setTimeout(() => { if(pendingRerender) tryRender(); }, 250);
+  }, true);
+
+  function subscribeRealtime(){
+    boardDocRef.onSnapshot((snap) => {
+      if(snap.exists){
+        const parsed = snap.data();
+        if(parsed.date !== todayStr()){
+          data = defaultData();
+          resetBoardIfStale();
+        } else {
+          data = parsed;
+          data.cars.forEach(c => {
+            if(!Array.isArray(c.memos)){
+              c.memos = (typeof c.memo === 'string' && c.memo.trim()) ? [{ id:'legacy-'+c.id, text:c.memo.trim() }] : [];
+            }
+            delete c.memo;
+          });
+        }
+      } else {
+        data = defaultData();
+        resetBoardIfStale();
+      }
+      boardReady = true;
+      tryRender();
+    }, (err) => console.error('보드 구독 오류', err));
+
+    leavesDocRef.onSnapshot((snap) => {
+      leaves = (snap.exists && Array.isArray(snap.data().leaves)) ? snap.data().leaves : [];
+      leavesReady = true;
+      tryRender();
+    }, (err) => console.error('미이용 구독 오류', err));
+
+    rosterDocRef.onSnapshot((snap) => {
+      if(snap.exists && Array.isArray(snap.data().names) && snap.data().names.length){
+        roster = snap.data().names;
+      } else {
+        roster = DEFAULT_ROSTER.slice();
+        rosterDocRef.set({ names: DEFAULT_ROSTER }).catch(e => console.error('명단 초기화 실패', e));
+      }
+      rosterReady = true;
+      tryRender();
+    }, (err) => console.error('명단 구독 오류', err));
+  }
+
+  function totalBooked(){ return data.cars.reduce((s,c)=>s+c.passengers.length,0); }
+  function totalEntered(){ return totalBooked() + todaysNonUsers().length; }
+
+  function assignedNamesToday(){
+    const set = new Set();
+    data.cars.forEach(c => c.passengers.forEach(p => set.add(p.name)));
+    todaysNonUsers().forEach(n => set.add(n.name));
+    return set;
+  }
+
+  function seatDots(car){
+    let html = '';
+    for(let i=0;i<CAPACITY;i++){
+      if(i < car.passengers.length){
+        html += `<div class="seat ${car.passengers.length>=CAPACITY?'full':'filled'}"></div>`;
+      } else {
+        html += `<div class="seat"></div>`;
+      }
+    }
+    return html;
+  }
+
+  function fmtRange(l){
+    if(l.start === l.end) return '';
+    const s = l.start.slice(5).replace('-','/');
+    const e = l.end.slice(5).replace('-','/');
+    return `${s}~${e}`;
+  }
+
+  function fmtDateShort(d){
+    if(!d) return '';
+    const parts = d.split('-');
+    if(parts.length < 3) return d;
+    const m = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
+    if(!m || !day) return d;
+    return `${m}월 ${day}일`;
+  }
+  function dateLabelText(d){
+    return `📅 ${fmtDateShort(d)}`;
+  }
+  function openDatePicker(input){
+    if(!input) return;
+    try{
+      if(typeof input.showPicker === 'function'){ input.showPicker(); }
+      else { input.focus(); }
+    } catch(e){ input.focus(); }
+  }
+
+  function captureFormState(){
+    const st = {};
+    data.cars.forEach(car => {
+      const nameSel = document.getElementById('name-'+car.id);
+      const memoInp = document.getElementById('memo-'+car.id);
+      st['name-'+car.id] = nameSel ? nameSel.value : '';
+      st['memo-'+car.id] = memoInp ? memoInp.value : '';
+    });
+    const nuName = document.getElementById('nonuserName');
+    const nuReason = document.getElementById('nonuserReason');
+    const nuStart = document.getElementById('nonuserStart');
+    const nuEnd = document.getElementById('nonuserEnd');
+    st.nuName = nuName ? nuName.value : '';
+    st.nuReason = nuReason ? nuReason.value : '';
+    st.nuStart = nuStart ? nuStart.value : '';
+    st.nuEnd = nuEnd ? nuEnd.value : '';
+    const rosterNameInp = document.getElementById('rosterName');
+    st.rosterName = rosterNameInp ? rosterNameInp.value : '';
+    return st;
+  }
+  function restoreFormState(st){
+    if(!st) return;
+    data.cars.forEach(car => {
+      const nameSel = document.getElementById('name-'+car.id);
+      const memoInp = document.getElementById('memo-'+car.id);
+      if(nameSel && st['name-'+car.id]) nameSel.value = st['name-'+car.id];
+      if(memoInp && st['memo-'+car.id] !== undefined && document.activeElement !== memoInp) memoInp.value = st['memo-'+car.id];
+    });
+    const nuName = document.getElementById('nonuserName');
+    const nuReason = document.getElementById('nonuserReason');
+    const nuStart = document.getElementById('nonuserStart');
+    const nuEnd = document.getElementById('nonuserEnd');
+    if(nuName && st.nuName) nuName.value = st.nuName;
+    if(nuReason && st.nuReason) nuReason.value = st.nuReason;
+    if(nuStart && st.nuStart){
+      nuStart.value = st.nuStart;
+      const lbl = document.getElementById('nonuserStartLabel');
+      if(lbl) lbl.textContent = dateLabelText(nuStart.value);
+    }
+    if(nuEnd && st.nuEnd){
+      nuEnd.value = st.nuEnd;
+      const lbl = document.getElementById('nonuserEndLabel');
+      if(lbl) lbl.textContent = dateLabelText(nuEnd.value);
+    }
+    const rosterNameInp = document.getElementById('rosterName');
+    if(rosterNameInp && st.rosterName) rosterNameInp.value = st.rosterName;
+  }
+
+  function render(){
+    const formState = captureFormState();
+
+    const dateLabel = new Date(data.date+'T00:00:00').toLocaleDateString('ko-KR', { month:'long', day:'numeric', weekday:'short' });
+    const entered = totalEntered();
+    const TOTAL_STAFF = roster.length;
+    const pct = TOTAL_STAFF > 0 ? Math.min(100, Math.round((entered / TOTAL_STAFF) * 100)) : 0;
+    const todayNU = todaysNonUsers();
+    const assigned = assignedNamesToday();
+    const availableRoster = roster.filter(n => !assigned.has(n));
+
+    root.innerHTML = `
+      <div class="system-title-bar">
+        <div class="system-title">주재원 퇴근 차량 게시판</div>
+        <div class="notice">
+          <span class="notice-label">⏰ 오늘 퇴근 차량 입력 마감</span>
+          <span class="notice-time">${CUTOFF_TIME}</span>
+        </div>
+      </div>
+
+      ${isPastCutoff() ? renderResultBoard() : ''}
+
+      <div class="head">
+        <div>
+          <h1>퇴근 차량 입력 현황</h1>
+          <div class="sub">${dateLabel}</div>
+        </div>
+        <div style="display:flex; align-items:flex-end;">
+          <div class="stat">
+            ${pct >= 100 ? `
+              <div class="complete-badge">✅ 전원 입력 완료</div>
+              <div class="complete-sub">${entered} / ${TOTAL_STAFF}명</div>
+            ` : `
+              <div class="num">${entered} / ${TOTAL_STAFF} (${pct}%)</div>
+              <div class="label">전체 입력 완료율</div>
+              <div class="progress-wrap"><div class="progress-bar" style="width:${pct}%;"></div></div>
+            `}
+          </div>
+          <button class="reset-btn" id="statusBtn">${statusOpen ? '입력 현황 닫기' : '입력 현황 보기'}</button>
+          <button class="reset-btn" id="rosterBtn">${rosterOpen ? '명단 관리 닫기' : '명단 관리'}</button>
+        </div>
+      </div>
+
+      ${statusOpen ? renderStatusPanel() : ''}
+      ${rosterOpen ? renderRosterPanel() : ''}
+
+      <div class="section-label">미이용 등록 (출장 · 휴가 · 자차 등, 기간 지정 가능)</div>
+      <div class="nonuser-card">
+        <div class="nonuser-list" id="nonuserList">
+          ${todayNU.length === 0
+            ? '<div class="nonuser-empty">오늘 등록된 미이용자가 없습니다</div>'
+            : todayNU.map(n => (pendingConfirm && pendingConfirm.type === 'leave' && pendingConfirm.id === n.id) ? `
+              <div class="nonuser-chip confirming">
+                <span>${escapeHtml(n.name)} 등록 취소?</span>
+                <button class="chip-yes" id="nuYes-${n.id}">예</button>
+                <button class="chip-no" id="nuNo-${n.id}">아니오</button>
+              </div>
+            ` : `
+              <div class="nonuser-chip">
+                <span>${escapeHtml(n.name)}</span>
+                <span class="reason" style="${reasonStyle(n.reason)}">${reasonIcon(n.reason)} ${escapeHtml(n.reason)}</span>
+                ${fmtRange(n) ? `<span class="range">${fmtRange(n)}</span>` : ''}
+                <button id="delnu-${n.id}" title="등록 취소">×</button>
+              </div>
+            `).join('')}
+        </div>
+        <div class="nonuser-add">
+          <div class="nu-row-name">
+            <input type="text" id="nonuserName" placeholder="이름 입력" autocomplete="off">
+            <button id="nonuserAddBtn">등록</button>
+          </div>
+          <div class="nu-row-meta">
+            <select id="nonuserReason">
+              ${NONUSE_REASONS.map(r => `<option value="${r}">${reasonIcon(r)} ${r}</option>`).join('')}
+            </select>
+            <span class="date-wrap">
+              <span class="date-label" id="nonuserStartLabel">${dateLabelText(todayStr())}</span>
+              <input type="date" id="nonuserStart" value="${todayStr()}" title="시작일 (탭하면 달력이 열립니다)">
+            </span>
+            <span class="date-sep">~</span>
+            <span class="date-wrap">
+              <span class="date-label" id="nonuserEndLabel">${dateLabelText(todayStr())}</span>
+              <input type="date" id="nonuserEnd" value="${todayStr()}" title="종료일 (탭하면 달력이 열립니다)">
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label">차량별 탑승 명단</div>
+      <div class="grid">
+        ${data.cars.map(car => renderCar(car, availableRoster)).join('')}
+      </div>
+      <div class="foot-note">탑승 명단은 매일 자동 초기화됩니다</div>
+    `;
+
+    document.getElementById('statusBtn').onclick = () => {
+      statusOpen = !statusOpen;
+      render();
+    };
+
+    document.getElementById('rosterBtn').onclick = () => {
+      rosterOpen = !rosterOpen;
+      render();
+    };
+
+    if(rosterOpen){
+      roster.forEach((name, idx) => {
+        const rmBtn = document.getElementById('rmRoster-'+idx);
+        if(rmBtn){
+          rmBtn.onclick = () => {
+            pendingConfirm = { type:'roster', name };
+            render();
+          };
+        }
+      });
+      if(pendingConfirm && pendingConfirm.type === 'roster'){
+        const rmYes = document.getElementById('rosterRmYes');
+        const rmNo = document.getElementById('rosterRmNo');
+        if(rmYes){
+          rmYes.onclick = async () => {
+            const nameToRemove = pendingConfirm.name;
+            pendingConfirm = null;
+            await mutateRoster(arr => arr.filter(n => n !== nameToRemove));
+          };
+        }
+        if(rmNo){
+          rmNo.onclick = () => {
+            pendingConfirm = null;
+            render();
+          };
+        }
+      }
+      const rosterNameInput = document.getElementById('rosterName');
+      const rosterAddBtn = document.getElementById('rosterAddBtn');
+      if(rosterAddBtn && rosterNameInput){
+        rosterAddBtn.onclick = async () => {
+          const name = rosterNameInput.value.trim();
+          if(!name) return;
+          rosterNameInput.value = '';
+          await mutateRoster(arr => {
+            if(arr.includes(name)) return arr;
+            arr.push(name);
+            return arr;
+          });
+        };
+      }
+    }
+
+    todayNU.forEach(n => {
+      const btn = document.getElementById('delnu-'+n.id);
+      if(btn){
+        btn.onclick = () => {
+          pendingConfirm = { type:'leave', id:n.id };
+          render();
+        };
+      }
+      const yesBtn = document.getElementById('nuYes-'+n.id);
+      if(yesBtn){
+        yesBtn.onclick = async () => {
+          pendingConfirm = null;
+          await mutateLeaves(arr => arr.filter(x => x.id !== n.id));
+        };
+        document.getElementById('nuNo-'+n.id).onclick = () => {
+          pendingConfirm = null;
+          render();
+        };
+      }
+    });
+
+    const nuNameSel = document.getElementById('nonuserName');
+    const nuReasonSelect = document.getElementById('nonuserReason');
+    const nuStartInput = document.getElementById('nonuserStart');
+    const nuEndInput = document.getElementById('nonuserEnd');
+    if(nuStartInput){
+      nuStartInput.oninput = () => {
+        const lbl = document.getElementById('nonuserStartLabel');
+        if(lbl) lbl.textContent = dateLabelText(nuStartInput.value);
+      };
+      nuStartInput.onclick = () => openDatePicker(nuStartInput);
+      nuStartInput.onfocus = () => openDatePicker(nuStartInput);
+    }
+    if(nuEndInput){
+      nuEndInput.oninput = () => {
+        const lbl = document.getElementById('nonuserEndLabel');
+        if(lbl) lbl.textContent = dateLabelText(nuEndInput.value);
+      };
+      nuEndInput.onclick = () => openDatePicker(nuEndInput);
+      nuEndInput.onfocus = () => openDatePicker(nuEndInput);
+    }
+    document.getElementById('nonuserAddBtn').onclick = async () => {
+      const name = nuNameSel.value.trim();
+      if(!name) return;
+      let start = nuStartInput.value || todayStr();
+      let end = nuEndInput.value || start;
+      if(end < start) end = start;
+      const reason = nuReasonSelect.value;
+      nuNameSel.value = '';
+      await mutateLeaves(arr => {
+        arr.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7), name, reason, start, end });
+        return arr;
+      });
+    };
+
+    data.cars.forEach(car => {
+      const carId = car.id;
+
+      car.passengers.forEach(p => {
+        const delBtn = document.getElementById('del-'+car.id+'-'+p.id);
+        if(delBtn){
+          delBtn.onclick = async () => {
+            const pid = p.id;
+            await mutateBoard((d) => {
+              const c = d.cars.find(x => x.id === carId);
+              if(c) c.passengers = c.passengers.filter(x => x.id !== pid);
+            });
+          };
+        }
+      });
+
+      const addBtn = document.getElementById('add-'+car.id);
+      const nameSel = document.getElementById('name-'+car.id);
+
+      const memoInput = document.getElementById('memo-'+car.id);
+      const memoDoneBtn = document.getElementById('memodone-'+car.id);
+      if(memoDoneBtn && memoInput){
+        memoDoneBtn.onclick = async () => {
+          const text = memoInput.value.trim();
+          if(!text) return;
+          memoInput.value = '';
+          await mutateBoard((d) => {
+            const c = d.cars.find(x => x.id === carId);
+            if(!c) return;
+            if(!Array.isArray(c.memos)) c.memos = [];
+            c.memos.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7), text });
+          });
+        };
+      }
+      car.memos && car.memos.forEach(m => {
+        const delBtn = document.getElementById('delmemo-'+car.id+'-'+m.id);
+        if(delBtn){
+          delBtn.onclick = async () => {
+            const mid = m.id;
+            await mutateBoard((d) => {
+              const c = d.cars.find(x => x.id === carId);
+              if(c) c.memos = (c.memos || []).filter(x => x.id !== mid);
+            });
+          };
+        }
+      });
+
+      if(addBtn){
+        addBtn.onclick = async () => {
+          const name = nameSel.value.trim();
+          if(!name) return;
+          nameSel.value = '';
+          await mutateBoard((d) => {
+            const c = d.cars.find(x => x.id === carId);
+            if(!c) return;
+            if(c.passengers.length >= CAPACITY) return;
+            c.passengers.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7), name });
+          });
+        };
+      }
+    });
+
+    restoreFormState(formState);
+  }
+
+  function renderCar(car, availableRoster){
+    const slot = SLOTS[car.id];
+    const driver = driverForSlot(slot.idx);
+    const isFull = car.passengers.length >= CAPACITY;
+    return `
+      <div class="car">
+        <div class="car-top">
+          <div class="car-name">${slot.label}</div>
+          <div class="car-time">${slot.time}</div>
+        </div>
+        <div class="car-driver">기사 <b>${driver}</b></div>
+        ${car.memos && car.memos.length > 0 ? `
+          <div class="car-memo-badges">
+            ${car.memos.map(m => `
+              <div class="car-memo-badge">
+                <span>${escapeHtml(m.text)}</span>
+                <button class="memo-del-btn" id="delmemo-${car.id}-${m.id}" title="삭제">×</button>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+        <div class="seats-row">
+          <div class="seats">${seatDots(car)}</div>
+          <div class="status-line ${isFull ? 'full' : 'ok'}">${isFull ? '마감' : (CAPACITY - car.passengers.length) + '자리 남음'}</div>
+        </div>
+        <ul class="plist">
+          ${car.passengers.length === 0
+            ? '<li class="empty-row" style="background:none; padding:2px;">예약자가 없습니다</li>'
+            : car.passengers.map((p, i) => `
+              <li>
+                <span class="pname"><span class="pnum">${circledNumber(i+1)}</span>${escapeHtml(p.name)}</span>
+                <button id="del-${car.id}-${p.id}" title="삭제">×</button>
+              </li>
+            `).join('')}
+        </ul>
+        <div class="add-row">
+          <input type="text" id="name-${car.id}" placeholder="이름 입력" autocomplete="off" ${isFull ? 'disabled' : ''}>
+          <button id="add-${car.id}" ${isFull ? 'disabled' : ''}>탑승</button>
+        </div>
+        <div class="car-memo-label">Memo</div>
+        <div class="memo-row">
+          <textarea class="car-memo" id="memo-${car.id}" placeholder="예: 정비 중, 기사 변경, 경로 변경 등"></textarea>
+          <button class="memo-done-btn" id="memodone-${car.id}">입력</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function circledNumber(n){
+    const map = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+    return map[n-1] || `(${n})`;
+  }
+
+  function renderResultBoard(){
+    const dateLabel = new Date(data.date+'T00:00:00').toLocaleDateString('ko-KR', { month:'long', day:'numeric', weekday:'short' });
+    const rows = data.cars.map(car => {
+      const slot = SLOTS[car.id];
+      const driver = driverForSlot(slot.idx);
+      const names = car.passengers.length === 0
+        ? '탑승자 없음'
+        : car.passengers.map(p => escapeHtml(p.name)).join(', ');
+      return `
+        <div class="result-row">
+          <div class="result-row-top">
+            <span class="result-car">${slot.label}</span>
+            <span class="result-driver">기사 ${escapeHtml(driver)}</span>
+            <span class="result-time">${slot.time} 출발</span>
+          </div>
+          <div class="result-names">${names}</div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="result-board" id="resultBoard">
+        <div class="result-board-title">🚌 Today 배차 마감현황 <span class="result-board-date">${dateLabel} · ${CUTOFF_TIME} 마감</span></div>
+        ${rows}
+      </div>
+    `;
+  }
+
+  function renderStatusPanel(){
+    const todayNU = todaysNonUsers();
+    const carRows = data.cars.map(car => {
+      const slot = SLOTS[car.id];
+      const driver = driverForSlot(slot.idx);
+      const names = car.passengers.length === 0
+        ? '<span class="summary-note">탑승자 없음</span>'
+        : car.passengers.map((p,i) => `${circledNumber(i+1)}${escapeHtml(p.name)}`).join('  ');
+      return `
+        <div class="status-panel-row">
+          <div class="status-panel-slot">${slot.label} <span class="status-panel-time">${slot.time}</span><span class="status-panel-driver">기사 ${escapeHtml(driver)}</span></div>
+          <div class="status-panel-names">${names}</div>
+        </div>
+      `;
+    }).join('');
+
+    const nuText = todayNU.length === 0
+      ? '<span class="summary-note">없음</span>'
+      : todayNU.map(n => `${escapeHtml(n.name)}(${reasonIcon(n.reason)}${escapeHtml(n.reason)})`).join(', ');
+
+    const assigned = assignedNamesToday();
+    const missing = roster.filter(n => !assigned.has(n));
+    const missingHtml = missing.length === 0
+      ? '<span class="summary-note">전원 입력 완료</span>'
+      : missing.map(n => `<span class="missing-chip">${escapeHtml(n)}</span>`).join(' ');
+
+    return `
+      <div class="status-panel">
+        <div class="summary-title" style="margin-bottom:12px;">📋 현재 입력 현황</div>
+        ${carRows}
+        <hr class="summary-divider">
+        <div class="status-panel-row">
+          <div class="status-panel-slot">미이용</div>
+          <div class="status-panel-names">${nuText}</div>
+        </div>
+        <hr class="summary-divider">
+        <div class="status-panel-row">
+          <div class="status-panel-slot">미입력 (${missing.length}명)</div>
+          <div class="status-panel-names">${missingHtml}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderRosterPanel(){
+    return `
+      <div class="nonuser-card" style="border-color:var(--amber);">
+        <div class="summary-title" style="margin-bottom:12px;">👥 입력 대상자 명단 관리 (총 ${roster.length}명)</div>
+        <div class="nonuser-list" id="rosterList">
+          ${roster.length === 0
+            ? '<div class="nonuser-empty">등록된 인원이 없습니다</div>'
+            : roster.map((name, idx) => (pendingConfirm && pendingConfirm.type === 'roster' && pendingConfirm.name === name) ? `
+              <div class="nonuser-chip confirming">
+                <span>${escapeHtml(name)} 명단에서 삭제할까요?</span>
+                <button class="chip-yes" id="rosterRmYes">예</button>
+                <button class="chip-no" id="rosterRmNo">아니오</button>
+              </div>
+            ` : `
+              <div class="nonuser-chip">
+                <span>${escapeHtml(name)}</span>
+                <button id="rmRoster-${idx}" title="명단에서 삭제">×</button>
+              </div>
+            `).join('')}
+        </div>
+        <div class="nonuser-add">
+          <input type="text" id="rosterName" placeholder="추가할 이름 입력" autocomplete="off">
+          <button id="rosterAddBtn">추가</button>
+        </div>
+        <div class="summary-note" style="margin-top:10px;">이 명단은 전체 입력 인원(분모) 및 "미입력" 표시 기준으로 사용되며, 전원에게 실시간으로 공유됩니다.</div>
+      </div>
+    `;
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  async function boot(){
+    await syncServerTime();
+    // 장시간 실행 시 시각 오차 누적을 막기 위해 30분마다 재동기화
+    setInterval(syncServerTime, 30 * 60 * 1000);
+    subscribeRealtime();
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

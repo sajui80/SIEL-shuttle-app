@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>퇴근셔틀 앱 다운로드</title>
+<style>
+  :root{
+    --bg:#f5f7fa; --panel:#ffffff; --panel-2:#eef1f6; --line:#dde2ea;
+    --text:#1b2130; --muted:#6b7382; --amber:#c2740a; --green:#15803d;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    padding:32px 18px 60px;
+  }
+  .wrap{ max-width:480px; margin:0 auto; }
+  .icon{ width:88px; height:88px; border-radius:22px; display:block; margin:0 auto 16px; box-shadow:0 4px 16px rgba(194,116,10,0.25); }
+  h1{ text-align:center; font-size:21px; margin:0 0 6px; }
+  .sub{ text-align:center; color:var(--muted); font-size:13px; margin-bottom:28px; }
+  .dl-btn{
+    display:block; text-align:center; background:var(--amber); color:#fff;
+    font-weight:800; font-size:16px; padding:16px; border-radius:14px;
+    text-decoration:none; box-shadow:0 4px 14px rgba(194,116,10,0.35);
+    margin-bottom:10px;
+  }
+  .dl-note{ text-align:center; color:var(--muted); font-size:11.5px; margin-bottom:30px; }
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:18px; margin-bottom:16px;
+  }
+  .card h2{ font-size:14px; margin:0 0 12px; color:var(--amber); }
+  .card ol{ margin:0; padding-left:18px; font-size:13.5px; line-height:1.9; color:var(--text); }
+  .card ol li b{ color:var(--text); }
+  .warn{
+    background:rgba(194,116,10,0.08); border:1px solid rgba(194,116,10,0.3);
+    border-radius:10px; padding:10px 12px; font-size:12.5px; color:var(--text);
+    margin-top:10px;
+  }
+  .foot{ text-align:center; color:var(--muted); font-size:11px; margin-top:24px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <img class="icon" src="icon-192.png" alt="퇴근셔틀 아이콘">
+    <h1>퇴근셔틀 앱</h1>
+    <div class="sub">주재원 퇴근 차량 입력 · 안드로이드 전용</div>
+
+    <a class="dl-btn" id="dlBtn" href="#">⬇ 최신 버전 APK 다운로드</a>
+    <div class="dl-note" id="dlVersion">버전 정보를 불러오는 중...</div>
+
+    <div class="card">
+      <h2>설치 방법 (갤럭시 기준)</h2>
+      <ol>
+        <li>위 버튼으로 APK 파일을 다운로드합니다.</li>
+        <li>다운로드 완료 알림 또는 <b>파일함(내 파일)</b>에서 다운로드된 apk 파일을 엽니다.</li>
+        <li>"출처를 알 수 없는 앱" 관련 팝업이 뜨면 <b>허용</b>을 눌러줍니다. (최초 1회만)</li>
+        <li><b>설치</b>를 눌러 설치를 완료합니다.</li>
+        <li>홈 화면에 생성된 <b>퇴근셔틀</b> 아이콘을 실행합니다.</li>
+      </ol>
+      <div class="warn">⚠️ 앱이 이미 설치된 상태에서 새 버전을 설치할 때도 동일한 방법으로 다시 다운로드 후 설치하면 기존 앱 위에 업데이트됩니다.</div>
+    </div>
+
+    <div class="card">
+      <h2>안내</h2>
+      <ol>
+        <li>탑승 명단은 매일 자동 초기화됩니다.</li>
+        <li>탑승/미이용 등록 내용은 전원에게 실시간으로 공유됩니다.</li>
+        <li>문제가 있을 경우 담당자에게 문의해 주세요.</li>
+      </ol>
+    </div>
+
+    <div class="foot">본 페이지는 GitHub Pages로 제공되며, 다운로드 링크는 항상 최신 배포 버전을 가리킵니다.</div>
+  </div>
+
+<script>
+  // 이 페이지가 어느 저장소의 GitHub Pages에서 열리든(owner/repo 이름과 무관하게)
+  // 항상 "최신 릴리즈"의 shuttle-board.apk를 가리키도록 동적으로 링크를 구성합니다.
+  (function(){
+    var host = location.hostname; // 예: sajui80.github.io
+    var owner = host.split('.')[0];
+    var parts = location.pathname.split('/').filter(Boolean);
+    var repo = parts[0] || '';
+    var apkUrl = 'https://github.com/' + owner + '/' + repo + '/releases/latest/download/shuttle-board.apk';
+    var releaseUrl = 'https://github.com/' + owner + '/' + repo + '/releases/latest';
+    document.getElementById('dlBtn').href = apkUrl;
+
+    fetch('https://api.github.com/repos/' + owner + '/' + repo + '/releases/latest')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(json){
+        var el = document.getElementById('dlVersion');
+        if(json && json.tag_name){
+          var d = new Date(json.published_at);
+          el.textContent = json.name + ' · ' + d.toLocaleDateString('ko-KR');
+        } else {
+          el.innerHTML = '아직 배포된 버전이 없습니다. <a href="' + releaseUrl + '">릴리즈 페이지 확인</a>';
+        }
+      })
+      .catch(function(){
+        document.getElementById('dlVersion').textContent = '';
+      });
+  })();
+</script>
+</body>
+</html>
