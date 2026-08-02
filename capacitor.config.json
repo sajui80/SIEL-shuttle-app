@@ -1,5 +1,9 @@
 {
   "appId": "com.sajui.shuttleboard",
   "appName": "퇴근셔틀",
-  "webDir": "www"
+  "webDir": "www",
+  "server": {
+    "url": "https://sajui80.github.io/SIEL-shuttle-app/app/",
+    "cleartext": false
+  }
 }
