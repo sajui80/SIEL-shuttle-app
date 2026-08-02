@@ -783,8 +783,14 @@
   // =====================================================================
   const BOARD_TIMEZONE = 'Asia/Kolkata';
   let serverTimeOffsetMs = 0;
+  // 서버 시각 동기화가 한 번이라도 성공하기 전에는 "오늘 날짜" 판단을
+  // 신뢰할 수 없으므로, 이 값이 true가 되기 전까지는 날짜 불일치를 이유로
+  // 한 자동 초기화(리셋)를 절대 실행하지 않습니다. (기기 시계 오작동으로
+  // 인한 전체 탑승 명단/메모 유실 방지)
+  let serverTimeSynced = false;
 
-  async function syncServerTime(){
+  async function syncServerTime(attempt){
+    attempt = attempt || 1;
     try{
       const ref = db.collection('shuttle').doc('_timesync');
       const sentAt = Date.now();
@@ -795,14 +801,29 @@
         const serverMs = tsField.toMillis();
         const roundTrip = Date.now() - sentAt;
         serverTimeOffsetMs = serverMs - (sentAt + roundTrip / 2);
+        serverTimeSynced = true;
       }
     } catch(e){
-      console.warn('서버 시각 동기화 실패 — 기기 시각으로 대체합니다', e);
-      serverTimeOffsetMs = 0;
+      console.warn(`서버 시각 동기화 실패 (시도 ${attempt}/3)`, e);
+      if(attempt < 3){
+        await new Promise(r => setTimeout(r, attempt * 1500));
+        return syncServerTime(attempt + 1);
+      }
+      console.warn('서버 시각 동기화 3회 실패 — 이번 세션은 날짜 기반 자동 초기화를 보류합니다');
     }
   }
 
   function nowMs(){ return Date.now() + serverTimeOffsetMs; }
+
+  // 저장된 날짜가 "오늘"보다 과거일 때만 초기화 대상으로 판단합니다.
+  // (기존 결함: 단순 불일치(!==)로 판단 → 기기 시계가 어긋난 경우 최신
+  //  데이터도 과거 것으로 오판해 전체 보드를 삭제하는 문제가 있었음)
+  // 서버 시각 동기화가 아직 확정되지 않았다면 판단을 보류합니다.
+  function isStaleDate(storedDate){
+    if(!serverTimeSynced) return false;
+    if(!storedDate) return true;
+    return storedDate < todayStr();
+  }
 
   function todayStr(){
     const d = new Date(nowMs());
@@ -875,7 +896,16 @@
       await db.runTransaction(async (tx) => {
         const snap = await tx.get(boardDocRef);
         let cur = snap.exists ? snap.data() : null;
-        if(!cur || cur.date !== todayStr()) cur = defaultData();
+        if(!cur || isStaleDate(cur.date)){
+          // 초기화 전, 기존 데이터(그날 날짜 기준)를 백업 문서에 보관합니다.
+          // 판단 오류로 인한 초기화였더라도 데이터를 복구할 수 있도록 하는
+          // 안전장치입니다.
+          if(cur && cur.date){
+            const histRef = db.collection('shuttle').doc('history_'+cur.date);
+            tx.set(histRef, cur, { merge:true });
+          }
+          cur = defaultData();
+        }
         if(!Array.isArray(cur.cars)) cur.cars = defaultCars();
         cur.cars.forEach(c => {
           if(!Array.isArray(c.memos)){
@@ -919,7 +949,11 @@
       await db.runTransaction(async (tx) => {
         const snap = await tx.get(boardDocRef);
         const cur = snap.exists ? snap.data() : null;
-        if(!cur || cur.date !== todayStr()){
+        if(!cur || isStaleDate(cur.date)){
+          if(cur && cur.date){
+            const histRef = db.collection('shuttle').doc('history_'+cur.date);
+            tx.set(histRef, cur, { merge:true });
+          }
           tx.set(boardDocRef, defaultData());
         }
       });
@@ -953,7 +987,7 @@
     boardDocRef.onSnapshot((snap) => {
       if(snap.exists){
         const parsed = snap.data();
-        if(parsed.date !== todayStr()){
+        if(isStaleDate(parsed.date)){
           data = defaultData();
           resetBoardIfStale();
         } else {
