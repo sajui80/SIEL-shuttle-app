@@ -13,6 +13,7 @@
 <!-- Firebase (무료 플랜으로 충분합니다) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script>
   const firebaseConfig = {
     apiKey: "AIzaSyA3m70FBaTGl9XLbOUfwPVLgtLwqpY3piM",
@@ -872,6 +873,25 @@
     return { date: todayStr(), cars: defaultCars() };
   }
 
+  // 익명 인증: Firestore 보안 규칙을 "인증된 요청만 허용"으로 좁히기 위한
+  // 최소 조치입니다. 이 앱은 별도 로그인 화면 없이, 앱이 열릴 때마다
+  // 조용히 익명 세션을 만들어 그 세션으로만 Firestore에 접근합니다.
+  // (외부에서 공개 저장소의 firebaseConfig 값만으로 무작정 읽고 쓰는
+  //  요청을 차단하기 위한 목적이며, 완전한 보안 수단은 아닙니다.)
+  async function ensureAuth(){
+    const auth = firebase.auth();
+    return new Promise((resolve) => {
+      let settled = false;
+      auth.onAuthStateChanged((user) => {
+        if(user && !settled){ settled = true; resolve(user); }
+      });
+      auth.signInAnonymously().catch((e) => {
+        console.error('익명 인증 실패', e);
+        if(!settled){ settled = true; resolve(null); }
+      });
+    });
+  }
+
   const db = firebase.firestore();
 
   // 사내망/VPN 등에서 웹소켓이 막혀 있으면 최초 연결이 느려질 수 있어,
@@ -1549,6 +1569,7 @@
   }
 
   async function boot(){
+    await ensureAuth();
     await syncServerTime();
     // 장시간 실행 시 시각 오차 누적을 막기 위해 30분마다 재동기화
     setInterval(syncServerTime, 30 * 60 * 1000);
